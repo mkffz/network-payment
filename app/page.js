@@ -3,15 +3,8 @@
 import { useState } from "react";
 
 export default function Home() {
-  const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
-
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
-
-  // Portal format: dd-MM-yyyy
-  const [expiryDate, setExpiryDate] = useState("24-02-2026");
+  const [description, setDescription] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [link, setLink] = useState("");
@@ -22,12 +15,8 @@ export default function Home() {
     setLink("");
 
     const a = Number(amount);
-    if (!description.trim()) return setError("Item description is required.");
-    if (!Number.isFinite(a) || a <= 0) return setError("Amount must be > 0.");
-    if (!firstName.trim()) return setError("First name is required.");
-    if (!lastName.trim()) return setError("Last name is required.");
-    if (!email.trim()) return setError("Email is required.");
-    if (!expiryDate.trim()) return setError("Expiry date is required (dd-MM-yyyy).");
+    if (!description.trim()) return setError("Please enter a description.");
+    if (!Number.isFinite(a) || a <= 0) return setError("Please enter a valid amount > 0.");
 
     setLoading(true);
     try {
@@ -37,12 +26,6 @@ export default function Home() {
         body: JSON.stringify({
           description: description.trim(),
           amount: a,
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          email: email.trim(),
-          invoiceExpiryDate: expiryDate.trim(),
-          transactionType: "SALE",
-          currency: "AED",
         }),
       });
 
@@ -58,10 +41,10 @@ export default function Home() {
   }
 
   return (
-    <main style={{ maxWidth: 720, margin: "40px auto", fontFamily: "Arial, sans-serif" }}>
+    <main style={{ maxWidth: 650, margin: "40px auto", fontFamily: "Arial, sans-serif" }}>
       <h2>N-Genius Payment Link Generator</h2>
 
-      <label>Item description</label>
+      <label>Description</label>
       <input
         value={description}
         onChange={(e) => setDescription(e.target.value)}
@@ -75,45 +58,6 @@ export default function Home() {
         onChange={(e) => setAmount(e.target.value)}
         placeholder="e.g., 260"
         type="number"
-        style={{ width: "100%", padding: 10, margin: "8px 0 16px" }}
-      />
-
-      <div style={{ display: "flex", gap: 12 }}>
-        <div style={{ flex: 1 }}>
-          <label>First name</label>
-          <input
-            value={firstName}
-            onChange={(e) => setFirstName(e.target.value)}
-            placeholder="First name"
-            style={{ width: "100%", padding: 10, margin: "8px 0 16px" }}
-          />
-        </div>
-
-        <div style={{ flex: 1 }}>
-          <label>Last name</label>
-          <input
-            value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
-            placeholder="Last name"
-            style={{ width: "100%", padding: 10, margin: "8px 0 16px" }}
-          />
-        </div>
-      </div>
-
-      <label>Email</label>
-      <input
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="customer@email.com"
-        type="email"
-        style={{ width: "100%", padding: 10, margin: "8px 0 16px" }}
-      />
-
-      <label>Expiry date (dd-MM-yyyy)</label>
-      <input
-        value={expiryDate}
-        onChange={(e) => setExpiryDate(e.target.value)}
-        placeholder="24-02-2026"
         style={{ width: "100%", padding: 10, margin: "8px 0 16px" }}
       />
 
