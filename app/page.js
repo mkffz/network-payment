@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 export default function Home() {
   const [amount, setAmount] = useState("");
@@ -9,30 +9,69 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [link, setLink] = useState("");
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
 
-  async function copyToClipboard(text) {
+  const [copyStatus, setCopyStatus] = useState("idle"); 
+  // "idle" | "success" | "failed"
+
+  const linkInputRef = useRef(null);
+
+  async function tryAutoCopy(text) {
+    // Attempt auto copy (may fail on iPhone after async calls)
     try {
-      // Modern browsers
-      await navigator.clipboard.writeText(text);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+      return false;
     } catch {
-      // iPhone fallback (Safari)
-      const textarea = document.createElement("textarea");
-      textarea.value = text;
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.focus();
-      textarea.select();
-      document.execCommand("copy");
-      document.body.removeChild(textarea);
+      return false;
     }
+  }
+
+  function selectLink() {
+    const el = linkInputRef.current;
+    if (!el) return;
+    el.focus();
+    el.select();
+    el.setSelectionRange(0, el.value.length);
+  }
+
+  async function tapToCopy() {
+    if (!link) return;
+
+    try {
+      // This function is called directly by a user tap -> iPhone allows it.
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(link);
+      } else {
+        // fallback
+        selectLink();
+        document.execCommand("copy");
+      }
+      setCopyStatus("success");
+    } catch {
+      // fallback fallback
+      try {
+        selectLink();
+        document.execCommand("copy");
+        setCopyStatus("success");
+      } catch {
+        setCopyStatus("failed");
+      }
+    }
+  }
+
+  function openWhatsApp() {
+    if (!link) return;
+    // Opens WhatsApp with text prefilled (best iPhone flow)
+    const text = encodeURIComponent(link);
+    window.location.href = `https://wa.me/?text=${text}`;
   }
 
   async function generate() {
     setError("");
     setLink("");
-    setCopied(false);
+    setCopyStatus("idle");
 
     const a = Number(amount);
     if (!description.trim()) return setError("Please enter a description.");
@@ -54,10 +93,13 @@ export default function Home() {
 
       setLink(data.paymentUrl);
 
-      // 🔥 AUTO COPY
-      await copyToClipboard(data.paymentUrl);
-      setCopied(true);
+      // Auto-copy attempt (may fail on iPhone)
+      const ok = await tryAutoCopy(data.paymentUrl);
 
+      // Select link to make manual copy easy
+      setTimeout(() => selectLink(), 50);
+
+      setCopyStatus(ok ? "success" : "failed");
     } catch (e) {
       setError(e.message);
     } finally {
@@ -99,24 +141,63 @@ export default function Home() {
           width: "100%",
         }}
       >
-        {loading ? "Generating..." : "Generate & Copy Link"}
+        {loading ? "Generating..." : "Generate Link"}
       </button>
-
-      {copied && (
-        <p style={{ color: "green", marginTop: 16, fontWeight: "bold" }}>
-          Link copied to clipboard ✓
-        </p>
-      )}
 
       {error && <p style={{ color: "crimson", marginTop: 16 }}>{error}</p>}
 
       {link && (
         <div style={{ marginTop: 16 }}>
+          {copyStatus === "success" && (
+            <p style={{ color: "green", fontWeight: "bold" }}>
+              Copied ✅
+            </p>
+          )}
+
+          {copyStatus === "failed" && (
+            <p style={{ color: "#b45309", fontWeight: "bold" }}>
+              iPhone blocked auto-copy. Tap the button below to copy.
+            </p>
+          )}
+
           <input
+            ref={linkInputRef}
             value={link}
             readOnly
             style={{ width: "100%", padding: 12, fontSize: 14 }}
           />
+
+          <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+            <button
+              onClick={tapToCopy}
+              style={{
+                flex: 1,
+                padding: "12px 14px",
+                fontSize: 16,
+                background: "#111827",
+                color: "white",
+                border: "none",
+                borderRadius: 8,
+              }}
+            >
+              Tap to Copy
+            </button>
+
+            <button
+              onClick={openWhatsApp}
+              style={{
+                flex: 1,
+                padding: "12px 14px",
+                fontSize: 16,
+                background: "#16a34a",
+                color: "white",
+                border: "none",
+                borderRadius: 8,
+              }}
+            >
+              Open WhatsApp
+            </button>
+          </div>
         </div>
       )}
     </main>
