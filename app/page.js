@@ -69,8 +69,8 @@ export default function Home() {
       const res = await fetch("/api/create-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.ENDSTRINGIFY({
-          description: description.trim(),
+body: JSON.stringify({
+  description: description.trim(),
           amount: apiAmount,
         }),
       });
