@@ -9,10 +9,30 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [link, setLink] = useState("");
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  async function copyToClipboard(text) {
+    try {
+      // Modern browsers
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // iPhone fallback (Safari)
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
+  }
 
   async function generate() {
     setError("");
     setLink("");
+    setCopied(false);
 
     const a = Number(amount);
     if (!description.trim()) return setError("Please enter a description.");
@@ -33,6 +53,11 @@ export default function Home() {
       if (!res.ok) throw new Error(data?.error || "Failed");
 
       setLink(data.paymentUrl);
+
+      // 🔥 AUTO COPY
+      await copyToClipboard(data.paymentUrl);
+      setCopied(true);
+
     } catch (e) {
       setError(e.message);
     } finally {
@@ -49,7 +74,7 @@ export default function Home() {
         value={description}
         onChange={(e) => setDescription(e.target.value)}
         placeholder="e.g., AE Tickets - Arsenal vs City"
-        style={{ width: "100%", padding: 10, margin: "8px 0 16px" }}
+        style={{ width: "100%", padding: 12, margin: "8px 0 16px", fontSize: 16 }}
       />
 
       <label>Amount (AED)</label>
@@ -58,19 +83,40 @@ export default function Home() {
         onChange={(e) => setAmount(e.target.value)}
         placeholder="e.g., 260"
         type="number"
-        style={{ width: "100%", padding: 10, margin: "8px 0 16px" }}
+        style={{ width: "100%", padding: 12, margin: "8px 0 16px", fontSize: 16 }}
       />
 
-      <button onClick={generate} disabled={loading} style={{ padding: "10px 14px" }}>
-        {loading ? "Generating..." : "Generate Link"}
+      <button
+        onClick={generate}
+        disabled={loading}
+        style={{
+          padding: "14px 18px",
+          fontSize: 16,
+          background: "#0b5ed7",
+          color: "white",
+          border: "none",
+          borderRadius: 8,
+          width: "100%",
+        }}
+      >
+        {loading ? "Generating..." : "Generate & Copy Link"}
       </button>
+
+      {copied && (
+        <p style={{ color: "green", marginTop: 16, fontWeight: "bold" }}>
+          Link copied to clipboard ✓
+        </p>
+      )}
 
       {error && <p style={{ color: "crimson", marginTop: 16 }}>{error}</p>}
 
       {link && (
         <div style={{ marginTop: 16 }}>
-          <p><b>Payment Link:</b></p>
-          <input value={link} readOnly style={{ width: "100%", padding: 10 }} />
+          <input
+            value={link}
+            readOnly
+            style={{ width: "100%", padding: 12, fontSize: 14 }}
+          />
         </div>
       )}
     </main>
