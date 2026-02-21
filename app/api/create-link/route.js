@@ -14,24 +14,41 @@ function formatAmount(n) {
   return Number((Math.round(n * 100) / 100).toFixed(2));
 }
 
-function formatExpiryDDMMYYYY_DASH(daysFromNow = 7) {
-  // Returns dd-MM-yyyy (as shown in your portal: 24-02-2026)
-  const d = new Date();
-  d.setDate(d.getDate() + daysFromNow);
-
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = String(d.getFullYear());
-
-  return `${dd}-${mm}-${yyyy}`;
-}
-
 async function safeJson(res) {
   try {
     return await res.json();
   } catch {
     return null;
   }
+}
+
+function parseDDMMYYYY_DASH_toISOEndOfDay(dateStr) {
+  // Input: "24-02-2026"
+  // Output: "2026-02-24T23:59:59Z"
+  const m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(dateStr);
+  if (!m) return null;
+
+  const dd = Number(m[1]);
+  const mm = Number(m[2]);
+  const yyyy = Number(m[3]);
+
+  // Basic validation
+  if (mm < 1 || mm > 12) return null;
+  if (dd < 1 || dd > 31) return null;
+
+  const isoDate = `${String(yyyy)}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+  return `${isoDate}T23:59:59Z`;
+}
+
+function defaultExpiryISO(daysFromNow = 7) {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + daysFromNow);
+
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+
+  return `${yyyy}-${mm}-${dd}T23:59:59Z`;
 }
 
 async function getAccessToken(apiBase, apiKey) {
@@ -104,22 +121,22 @@ export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
 
-    // Website fields
     const description = safeTrim(body.description);
     const amount = Number(body.amount);
-    const email = safeTrim(body.email);
 
-    // Required by your portal
+    const email = safeTrim(body.email);
     const firstName = safeTrim(body.firstName) || "Customer";
     const lastName = safeTrim(body.lastName) || "AE";
+
     const currency = safeTrim(body.currency) || (process.env.NG_CURRENCY || "AED");
 
-    // IMPORTANT: your outlet allows SALE (not PURCHASE)
+    // IMPORTANT: allowed transaction type for your outlet
     const transactionType = safeTrim(body.transactionType) || "SALE";
 
-    // Expiry date in dd-MM-yyyy (portal format)
+    // User enters dd-MM-yyyy (portal display), we convert to ISO datetime
+    const rawExpiry = safeTrim(body.invoiceExpiryDate); // expected like "24-02-2026"
     const invoiceExpiryDate =
-      safeTrim(body.invoiceExpiryDate) || formatExpiryDDMMYYYY_DASH(7);
+      parseDDMMYYYY_DASH_toISOEndOfDay(rawExpiry) || defaultExpiryISO(7);
 
     if (!description) {
       return Response.json({ error: "Item description is required" }, { status: 400 });
@@ -135,20 +152,16 @@ export async function POST(req) {
     const apiKey = mustGetEnv("NG_API_KEY");
     const outletRef = mustGetEnv("NG_OUTLET_REF");
 
-    // Required subject (your tenant demands it)
     const emailSubject =
       safeTrim(body.emailSubject) || `Payment Link - ${description}`.slice(0, 140);
-
-    // Quantity fixed to 1 as per your requirement
-    const quantity = 1;
 
     const payload = {
       firstName,
       lastName,
       email,
-      transactionType,     // ✅ SALE
-      invoiceExpiryDate,   // ✅ dd-MM-yyyy
-      emailSubject,        // ✅ required
+      transactionType,    // SALE
+      invoiceExpiryDate,  // ISO datetime
+      emailSubject,
       items: [
         {
           description,
@@ -156,7 +169,7 @@ export async function POST(req) {
             currencyCode: currency,
             value: formatAmount(amount),
           },
-          quantity,
+          quantity: 1,
         },
       ],
       total: {
