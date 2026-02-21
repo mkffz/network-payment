@@ -107,13 +107,14 @@ export default function Home() {
         value={description}
         onChange={(e) => setDescription(e.target.value)}
         placeholder="e.g., AE Tickets - Arsenal vs City"
-        style={{
-          width: "100%",
-          padding: 14,
-          margin: "10px 0 24px",
-          fontSize: 18,
-          borderRadius: 12,
-        }}
+style={{
+  width: "calc(100% - 24px)",
+  display: "block",
+  margin: "10px auto 24px",
+  padding: 14,
+  fontSize: 18,
+  borderRadius: 12,
+}}
       />
 
       <label>Amount (AED)</label>
@@ -122,28 +123,30 @@ export default function Home() {
         onChange={(e) => setAmount(e.target.value)}
         placeholder="e.g., 260"
         type="number"
-        style={{
-          width: "100%",
-          padding: 14,
-          margin: "10px 0 28px",
-          fontSize: 18,
-          borderRadius: 12,
-        }}
+style={{
+  width: "calc(100% - 24px)",
+  display: "block",
+  margin: "10px auto 28px",
+  padding: 14,
+  fontSize: 18,
+  borderRadius: 12,
+}}
       />
 
       <button
         onClick={generate}
         disabled={loading}
-        style={{
-          padding: "18px 18px",
-          fontSize: 18,
-          background: "#2f5ec4",
-          color: "white",
-          border: "none",
-          borderRadius: 14,
-          width: "100%",
-          marginBottom: 24,
-        }}
+style={{
+  width: "calc(100% - 24px)",
+  display: "block",
+  margin: "0 auto 24px",
+  padding: "18px 18px",
+  fontSize: 18,
+  background: "#2f5ec4",
+  color: "white",
+  border: "none",
+  borderRadius: 14,
+}}
       >
         {loading ? "Generating..." : "Generate Link"}
       </button>
