@@ -6,24 +6,24 @@ function mustGetEnv(name) {
   return value;
 }
 
-function formatAmount(n) {
-  return Number((Math.round(n * 100) / 100).toFixed(2));
-}
-
 function safeTrim(v) {
   return typeof v === "string" ? v.trim() : "";
 }
 
-function formatExpiryDDMMYYYY(daysFromNow = 7) {
-  // Returns dd/MM/yyyy (required by your API error message)
+function formatAmount(n) {
+  return Number((Math.round(n * 100) / 100).toFixed(2));
+}
+
+function formatExpiryISO(daysFromNow = 7) {
+  // Returns YYYY-MM-DD (commonly required by APIs)
   const d = new Date();
   d.setDate(d.getDate() + daysFromNow);
 
-  const dd = String(d.getDate()).padStart(2, "0");
+  const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = String(d.getFullYear());
+  const dd = String(d.getDate()).padStart(2, "0");
 
-  return `${dd}/${mm}/${yyyy}`;
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 async function safeJson(res) {
@@ -75,15 +75,13 @@ async function createInvoice(apiBase, token, outletRef, payload, contentType) {
 }
 
 async function createInvoiceSmart(apiBase, token, outletRef, payload) {
-  // Your API accepted vnd.ni-invoice.v1+json (since 422 came back with that)
-  // We'll still keep 1-2 fallbacks just in case.
   const contentTypesToTry = [
     "application/vnd.ni-invoice.v1+json",
     "application/vnd.ni-payment.v2+json",
     "application/json",
   ];
 
-  let lastErr = null;
+  let last415 = null;
 
   for (const ct of contentTypesToTry) {
     const { res, data } = await createInvoice(apiBase, token, outletRef, payload, ct);
@@ -96,15 +94,14 @@ async function createInvoiceSmart(apiBase, token, outletRef, payload) {
       return paymentUrl;
     }
 
-    // If not 415, we should stop guessing and return the real error.
     if (res.status !== 415) {
       throw new Error(`Invoice creation failed (${ct}): ${res.status} ${JSON.stringify(data)}`);
     }
 
-    lastErr = `415 Unsupported Media Type (${ct}): ${JSON.stringify(data)}`;
+    last415 = `415 Unsupported Media Type (${ct}): ${JSON.stringify(data)}`;
   }
 
-  throw new Error(lastErr || "Invoice creation failed");
+  throw new Error(last415 || "Invoice creation failed");
 }
 
 export async function POST(req) {
@@ -127,19 +124,18 @@ export async function POST(req) {
 
     const currency = process.env.NG_CURRENCY || "AED";
 
-    // Defaults (so you don't have to type customer name every time)
+    // Required by your API
     const firstName = safeTrim(body.firstName) || "AE";
     const lastName = safeTrim(body.lastName) || "Customer";
 
-    // Must be future date in dd/MM/yyyy
-    const invoiceExpiryDate =
-      safeTrim(body.invoiceExpiryDate) || formatExpiryDDMMYYYY(7);
+    // IMPORTANT: switch to ISO date format (YYYY-MM-DD)
+    const invoiceExpiryDate = safeTrim(body.invoiceExpiryDate) || formatExpiryISO(7);
 
     const payload = {
       firstName,
       lastName,
       transactionType: "PURCHASE",
-      invoiceExpiryDate, // dd/MM/yyyy
+      invoiceExpiryDate, // YYYY-MM-DD
       items: [
         {
           description,
