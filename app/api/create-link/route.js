@@ -41,6 +41,7 @@ async function getAccessToken(apiBase, apiKey) {
   });
 
   const data = await safeJson(res);
+
   if (!res.ok) {
     throw new Error(`Access token failed: ${res.status} ${JSON.stringify(data)}`);
   }
@@ -68,7 +69,6 @@ async function createInvoice(apiBase, token, outletRef, payload, contentType) {
 }
 
 async function createInvoiceSmart(apiBase, token, outletRef, payload) {
-  // Your responses show application/vnd.ni-invoice.v1+json is correct for your tenant.
   const contentTypesToTry = [
     "application/vnd.ni-invoice.v1+json",
     "application/json",
@@ -104,10 +104,9 @@ export async function POST(req) {
     const description = safeTrim(body.description);
     const amount = Number(body.amount);
 
-    // NEW: require email OR mobileNumber
     const email = safeTrim(body.email);
     const mobileNumber = safeTrim(body.mobileNumber);
-    const countryCode = safeTrim(body.countryCode); // e.g. "+971"
+    const countryCode = safeTrim(body.countryCode); // e.g. +971
 
     if (!description) {
       return Response.json({ error: "Description is required" }, { status: 400 });
@@ -117,13 +116,8 @@ export async function POST(req) {
     }
 
     if (!email && !mobileNumber) {
-      return Response.json(
-        { error: "Email or mobile number is required" },
-        { status: 400 }
-      );
+      return Response.json({ error: "Email or mobile number is required" }, { status: 400 });
     }
-
-    // If user provides mobileNumber, we also need a countryCode (per their portal style)
     if (mobileNumber && !countryCode) {
       return Response.json(
         { error: "countryCode is required when mobileNumber is provided (example: +971)" },
@@ -136,19 +130,23 @@ export async function POST(req) {
     const outletRef = mustGetEnv("NG_OUTLET_REF");
     const currency = process.env.NG_CURRENCY || "AED";
 
-    // Required by your tenant
+    // Required names
     const firstName = safeTrim(body.firstName) || "AE";
     const lastName = safeTrim(body.lastName) || "Customer";
 
-    // Expiry date
+    // Expiry
     const invoiceExpiryDate = safeTrim(body.invoiceExpiryDate) || formatExpiryISO(7);
 
-    // Build payload
+    // REQUIRED SUBJECT (your tenant demands it)
+    const emailSubject =
+      safeTrim(body.emailSubject) || `Payment Link - ${description}`.slice(0, 140);
+
     const payload = {
       firstName,
       lastName,
       transactionType: "PURCHASE",
       invoiceExpiryDate,
+      emailSubject, // ✅ NEW (requiredSubject)
       items: [
         {
           description,
@@ -166,7 +164,6 @@ export async function POST(req) {
       message: description,
     };
 
-    // Add email/mobile fields only if provided
     if (email) payload.email = email;
     if (mobileNumber) payload.mobileNumber = mobileNumber;
     if (countryCode) payload.countryCode = countryCode;
