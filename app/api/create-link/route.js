@@ -14,13 +14,16 @@ function formatAmount(n) {
   return Number((Math.round(n * 100) / 100).toFixed(2));
 }
 
-function formatExpiryISO(daysFromNow = 7) {
+function formatExpiryDDMMYYYY_DASH(daysFromNow = 7) {
+  // Returns dd-MM-yyyy (as shown in your portal: 24-02-2026)
   const d = new Date();
   d.setDate(d.getDate() + daysFromNow);
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
+
   const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`; // YYYY-MM-DD
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = String(d.getFullYear());
+
+  return `${dd}-${mm}-${yyyy}`;
 }
 
 async function safeJson(res) {
@@ -101,52 +104,51 @@ export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
 
+    // Website fields
     const description = safeTrim(body.description);
     const amount = Number(body.amount);
-
     const email = safeTrim(body.email);
-    const mobileNumber = safeTrim(body.mobileNumber);
-    const countryCode = safeTrim(body.countryCode); // e.g. +971
+
+    // Required by your portal
+    const firstName = safeTrim(body.firstName) || "Customer";
+    const lastName = safeTrim(body.lastName) || "AE";
+    const currency = safeTrim(body.currency) || (process.env.NG_CURRENCY || "AED");
+
+    // IMPORTANT: your outlet allows SALE (not PURCHASE)
+    const transactionType = safeTrim(body.transactionType) || "SALE";
+
+    // Expiry date in dd-MM-yyyy (portal format)
+    const invoiceExpiryDate =
+      safeTrim(body.invoiceExpiryDate) || formatExpiryDDMMYYYY_DASH(7);
 
     if (!description) {
-      return Response.json({ error: "Description is required" }, { status: 400 });
+      return Response.json({ error: "Item description is required" }, { status: 400 });
     }
     if (!Number.isFinite(amount) || amount <= 0) {
       return Response.json({ error: "Amount must be a number > 0" }, { status: 400 });
     }
-
-    if (!email && !mobileNumber) {
-      return Response.json({ error: "Email or mobile number is required" }, { status: 400 });
-    }
-    if (mobileNumber && !countryCode) {
-      return Response.json(
-        { error: "countryCode is required when mobileNumber is provided (example: +971)" },
-        { status: 400 }
-      );
+    if (!email) {
+      return Response.json({ error: "Email is required" }, { status: 400 });
     }
 
     const apiBase = mustGetEnv("NG_API_BASE");
     const apiKey = mustGetEnv("NG_API_KEY");
     const outletRef = mustGetEnv("NG_OUTLET_REF");
-    const currency = process.env.NG_CURRENCY || "AED";
 
-    // Required names
-    const firstName = safeTrim(body.firstName) || "AE";
-    const lastName = safeTrim(body.lastName) || "Customer";
-
-    // Expiry
-    const invoiceExpiryDate = safeTrim(body.invoiceExpiryDate) || formatExpiryISO(7);
-
-    // REQUIRED SUBJECT (your tenant demands it)
+    // Required subject (your tenant demands it)
     const emailSubject =
       safeTrim(body.emailSubject) || `Payment Link - ${description}`.slice(0, 140);
+
+    // Quantity fixed to 1 as per your requirement
+    const quantity = 1;
 
     const payload = {
       firstName,
       lastName,
-      transactionType: "PURCHASE",
-      invoiceExpiryDate,
-      emailSubject, // ✅ NEW (requiredSubject)
+      email,
+      transactionType,     // ✅ SALE
+      invoiceExpiryDate,   // ✅ dd-MM-yyyy
+      emailSubject,        // ✅ required
       items: [
         {
           description,
@@ -154,7 +156,7 @@ export async function POST(req) {
             currencyCode: currency,
             value: formatAmount(amount),
           },
-          quantity: 1,
+          quantity,
         },
       ],
       total: {
@@ -163,10 +165,6 @@ export async function POST(req) {
       },
       message: description,
     };
-
-    if (email) payload.email = email;
-    if (mobileNumber) payload.mobileNumber = mobileNumber;
-    if (countryCode) payload.countryCode = countryCode;
 
     const token = await getAccessToken(apiBase, apiKey);
     const paymentUrl = await createInvoiceSmart(apiBase, token, outletRef, payload);
