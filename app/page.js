@@ -166,8 +166,10 @@ style={{
             value={link}
             readOnly
             style={{
-              width: "100%",
-              padding: 14,
+  width: "calc(100% - 24px)",
+  display: "block",
+  margin: "0 auto 24px",
+  padding: "18px 18px",
               fontSize: 14,
               borderRadius: 12,
               marginBottom: 18,
@@ -177,9 +179,10 @@ style={{
           <button
             onClick={tapToCopy}
             style={{
-              width: "100%",
-              padding: "16px 14px",
-              fontSize: 18,
+  width: "calc(100% - 24px)",
+  display: "block",
+  margin: "0 auto 24px",
+  padding: "18px 18px",
               background: "#0f172a",
               color: "white",
               border: "none",
