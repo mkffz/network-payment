@@ -22,25 +22,11 @@ async function safeJson(res) {
   }
 }
 
-function parseDDMMYYYY_DASH_toISOEndOfDay(dateStr) {
-  // Input: "24-02-2026"
-  // Output: "2026-02-24T23:59:59Z"
-  const m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(dateStr);
-  if (!m) return null;
-
-  const dd = Number(m[1]);
-  const mm = Number(m[2]);
-  const yyyy = Number(m[3]);
-
-  // Basic validation
-  if (mm < 1 || mm > 12) return null;
-  if (dd < 1 || dd > 31) return null;
-
-  const isoDate = `${String(yyyy)}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
-  return `${isoDate}T23:59:59Z`;
-}
-
-function defaultExpiryISO(daysFromNow = 7) {
+/**
+ * Returns ISO datetime at end of day UTC: YYYY-MM-DDT23:59:59Z
+ * daysFromNow = 3 -> expiry 3 days after today
+ */
+function expiryISOEndOfDayUTC(daysFromNow = 3) {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() + daysFromNow);
 
@@ -124,43 +110,37 @@ export async function POST(req) {
     const description = safeTrim(body.description);
     const amount = Number(body.amount);
 
-    const email = safeTrim(body.email);
-    const firstName = safeTrim(body.firstName) || "Customer";
-    const lastName = safeTrim(body.lastName) || "AE";
-
-    const currency = safeTrim(body.currency) || (process.env.NG_CURRENCY || "AED");
-
-    // IMPORTANT: allowed transaction type for your outlet
-    const transactionType = safeTrim(body.transactionType) || "SALE";
-
-    // User enters dd-MM-yyyy (portal display), we convert to ISO datetime
-    const rawExpiry = safeTrim(body.invoiceExpiryDate); // expected like "24-02-2026"
-    const invoiceExpiryDate =
-      parseDDMMYYYY_DASH_toISOEndOfDay(rawExpiry) || defaultExpiryISO(7);
-
     if (!description) {
       return Response.json({ error: "Item description is required" }, { status: 400 });
     }
     if (!Number.isFinite(amount) || amount <= 0) {
       return Response.json({ error: "Amount must be a number > 0" }, { status: 400 });
     }
-    if (!email) {
-      return Response.json({ error: "Email is required" }, { status: 400 });
-    }
+
+    // ✅ AUTO-FILL (your request)
+    const email = "mkffz121@hotmail.com";
+    const firstName = "mohamed";
+    const lastName = "abdulla";
+
+    // Keep your outlet config
+    const currency = "AED";
+    const transactionType = "SALE";
+
+    // Expiry: 3 days after today (automatic)
+    const invoiceExpiryDate = expiryISOEndOfDayUTC(3);
 
     const apiBase = mustGetEnv("NG_API_BASE");
     const apiKey = mustGetEnv("NG_API_KEY");
     const outletRef = mustGetEnv("NG_OUTLET_REF");
 
-    const emailSubject =
-      safeTrim(body.emailSubject) || `Payment Link - ${description}`.slice(0, 140);
+    const emailSubject = `Payment Link - ${description}`.slice(0, 140);
 
     const payload = {
       firstName,
       lastName,
       email,
-      transactionType,    // SALE
-      invoiceExpiryDate,  // ISO datetime
+      transactionType,
+      invoiceExpiryDate,
       emailSubject,
       items: [
         {
@@ -182,7 +162,11 @@ export async function POST(req) {
     const token = await getAccessToken(apiBase, apiKey);
     const paymentUrl = await createInvoiceSmart(apiBase, token, outletRef, payload);
 
-    return Response.json({ paymentUrl });
+    return Response.json({
+      paymentUrl,
+      // optional debug info (remove if you don’t want it)
+      expiryUsed: invoiceExpiryDate,
+    });
   } catch (err) {
     return Response.json({ error: err?.message || "Server error" }, { status: 500 });
   }
