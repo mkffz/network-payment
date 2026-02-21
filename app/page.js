@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Image from "next/image";
 
 export default function Home() {
   const [amount, setAmount] = useState("");
@@ -100,8 +101,23 @@ body: JSON.stringify({
         fontFamily: "Arial, sans-serif",
       }}
     >
-      <h2 style={{ marginBottom: 30 }}>N-Genius Payment Link Generator</h2>
+<div style={{ textAlign: "center", marginBottom: 20 }}>
+  <Image
+    src="/logo.png"
+    alt="AE Logo"
+    width={140}
+    height={140}
+    priority
+    style={{
+      margin: "0 auto",
+      display: "block",
+    }}
+  />
+</div>
 
+<h2 style={{ marginBottom: 30, textAlign: "center" }}>
+  N-Genius Payment Link Generator
+</h2>
       <label>Description</label>
       <input
         value={description}
