@@ -45,13 +45,9 @@ export default function Home() {
       }
       setCopyStatus("success");
     } catch {
-      try {
-        selectLink();
-        document.execCommand("copy");
-        setCopyStatus("success");
-      } catch {
-        setCopyStatus("failed");
-      }
+      selectLink();
+      document.execCommand("copy");
+      setCopyStatus("success");
     }
   }
 
@@ -66,7 +62,6 @@ export default function Home() {
     if (!Number.isFinite(enteredAmount) || enteredAmount <= 0)
       return setError("Please enter a valid amount > 0.");
 
-    // 🔥 Convert AED → fils (minor units)
     const apiAmount = Math.round(enteredAmount * 100);
 
     setLoading(true);
@@ -74,9 +69,9 @@ export default function Home() {
       const res = await fetch("/api/create-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: JSON.ENDSTRINGIFY({
           description: description.trim(),
-          amount: apiAmount, // <-- multiplied here
+          amount: apiAmount,
         }),
       });
 
@@ -97,15 +92,28 @@ export default function Home() {
   }
 
   return (
-    <main style={{ maxWidth: 650, margin: "40px auto", fontFamily: "Arial, sans-serif" }}>
-      <h2>N-Genius Payment Link Generator</h2>
+    <main
+      style={{
+        maxWidth: 650,
+        margin: "0 auto",
+        padding: "40px 18px calc(40px + env(safe-area-inset-bottom))",
+        fontFamily: "Arial, sans-serif",
+      }}
+    >
+      <h2 style={{ marginBottom: 30 }}>N-Genius Payment Link Generator</h2>
 
       <label>Description</label>
       <input
         value={description}
         onChange={(e) => setDescription(e.target.value)}
         placeholder="e.g., AE Tickets - Arsenal vs City"
-        style={{ width: "100%", padding: 12, margin: "8px 0 16px", fontSize: 16 }}
+        style={{
+          width: "100%",
+          padding: 14,
+          margin: "10px 0 24px",
+          fontSize: 18,
+          borderRadius: 12,
+        }}
       />
 
       <label>Amount (AED)</label>
@@ -114,20 +122,27 @@ export default function Home() {
         onChange={(e) => setAmount(e.target.value)}
         placeholder="e.g., 260"
         type="number"
-        style={{ width: "100%", padding: 12, margin: "8px 0 16px", fontSize: 16 }}
+        style={{
+          width: "100%",
+          padding: 14,
+          margin: "10px 0 28px",
+          fontSize: 18,
+          borderRadius: 12,
+        }}
       />
 
       <button
         onClick={generate}
         disabled={loading}
         style={{
-          padding: "14px 18px",
-          fontSize: 16,
-          background: "#0b5ed7",
+          padding: "18px 18px",
+          fontSize: 18,
+          background: "#2f5ec4",
           color: "white",
           border: "none",
-          borderRadius: 8,
+          borderRadius: 14,
           width: "100%",
+          marginBottom: 24,
         }}
       >
         {loading ? "Generating..." : "Generate Link"}
@@ -136,14 +151,10 @@ export default function Home() {
       {error && <p style={{ color: "crimson", marginTop: 16 }}>{error}</p>}
 
       {link && (
-        <div style={{ marginTop: 16 }}>
+        <div style={{ marginTop: 10 }}>
           {copyStatus === "success" && (
-            <p style={{ color: "green", fontWeight: "bold" }}>Copied ✅</p>
-          )}
-
-          {copyStatus === "failed" && (
-            <p style={{ color: "#b45309", fontWeight: "bold" }}>
-              Tap button to copy
+            <p style={{ color: "green", fontWeight: "bold", marginBottom: 10 }}>
+              Copied ✅
             </p>
           )}
 
@@ -151,20 +162,25 @@ export default function Home() {
             ref={linkInputRef}
             value={link}
             readOnly
-            style={{ width: "100%", padding: 12, fontSize: 14 }}
+            style={{
+              width: "100%",
+              padding: 14,
+              fontSize: 14,
+              borderRadius: 12,
+              marginBottom: 18,
+            }}
           />
 
           <button
             onClick={tapToCopy}
             style={{
-              marginTop: 12,
               width: "100%",
-              padding: "12px 14px",
-              fontSize: 16,
-              background: "#111827",
+              padding: "16px 14px",
+              fontSize: 18,
+              background: "#0f172a",
               color: "white",
               border: "none",
-              borderRadius: 8,
+              borderRadius: 14,
             }}
           >
             Tap to Copy
