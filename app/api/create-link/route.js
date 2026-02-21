@@ -2,9 +2,7 @@ export const runtime = "nodejs";
 
 function mustGetEnv(name) {
   const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing env var: ${name}`);
-  }
+  if (!value) throw new Error(`Missing env var: ${name}`);
   return value;
 }
 
@@ -12,41 +10,53 @@ function formatAmount(n) {
   return Number((Math.round(n * 100) / 100).toFixed(2));
 }
 
-async function getAccessToken(apiBase, apiKey) {
-  const response = await fetch(
-    `${apiBase}/identity/auth/access-token`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/vnd.ni-identity.v1+json",
-        Authorization: `Basic ${apiKey}`,
-      },
-    }
-  );
-
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(
-      `Access token failed: ${response.status} ${JSON.stringify(data)}`
-    );
+async function safeJson(res) {
+  try {
+    return await res.json();
+  } catch {
+    return null;
   }
+}
 
-  if (!data.access_token) {
-    throw new Error("No access_token returned from N-Genius");
+async function getAccessToken(apiBase, apiKey) {
+  const url = `${apiBase}/identity/auth/access-token`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/vnd.ni-identity.v1+json",
+      Authorization: `Basic ${apiKey}`,
+    },
+  });
+
+  const data = await safeJson(res);
+
+  if (!res.ok) {
+    throw new Error(`Access token failed: ${res.status} ${JSON.stringify(data)}`);
+  }
+  if (!data?.access_token) {
+    throw new Error(`No access_token returned: ${JSON.stringify(data)}`);
   }
 
   return data.access_token;
 }
 
-async function createInvoice(apiBase, token, outletRef, currency, description, amount) {
+async function createInvoiceWithContentType({
+  apiBase,
+  token,
+  outletRef,
+  currency,
+  description,
+  amount,
+  contentType,
+}) {
   const url = `${apiBase}/invoices/outlets/${outletRef}/invoice`;
 
   const body = {
     transactionType: "PURCHASE",
     items: [
       {
-        description: description,
+        description,
         totalPrice: {
           currencyCode: currency,
           value: formatAmount(amount),
@@ -61,53 +71,75 @@ async function createInvoice(apiBase, token, outletRef, currency, description, a
     message: description,
   };
 
-  const response = await fetch(url, {
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
-      "Content-Type": "application/vnd.ni-payment.v2+json",
-      Accept: "application/vnd.ni-payment.v2+json",
+      "Content-Type": contentType,
+      Accept: contentType,
     },
     body: JSON.stringify(body),
   });
 
-  const data = await response.json().catch(() => ({}));
+  const data = await safeJson(res);
 
-  if (!response.ok) {
-    throw new Error(
-      `Invoice creation failed: ${response.status} ${JSON.stringify(data)}`
-    );
+  return { res, data };
+}
+
+async function createInvoiceSmart(apiBase, token, outletRef, currency, description, amount) {
+  // We try the common N-Genius/Network variants.
+  // The goal: automatically avoid the 415 “Unsupported Media Type” loop.
+  const contentTypesToTry = [
+    "application/vnd.ni-invoice.v1+json",
+    "application/vnd.ni-payment.v2+json",
+    "application/vnd.ni-payment.v3+json",
+    "application/json",
+  ];
+
+  let lastError = null;
+
+  for (const ct of contentTypesToTry) {
+    const { res, data } = await createInvoiceWithContentType({
+      apiBase,
+      token,
+      outletRef,
+      currency,
+      description,
+      amount,
+      contentType: ct,
+    });
+
+    if (res.ok) {
+      const paymentUrl = data?._links?.payment?.href || data?.payment?.href;
+      if (!paymentUrl) {
+        throw new Error(`Invoice created but no payment link returned. Response: ${JSON.stringify(data)}`);
+      }
+      return paymentUrl;
+    }
+
+    // If it's NOT 415, don't keep guessing—surface the real error immediately.
+    if (res.status !== 415) {
+      throw new Error(`Invoice creation failed (${ct}): ${res.status} ${JSON.stringify(data)}`);
+    }
+
+    // Save 415 error and try next content type
+    lastError = `415 Unsupported Media Type with Content-Type=${ct}: ${JSON.stringify(data)}`;
   }
 
-  const paymentUrl =
-    data?._links?.payment?.href ||
-    data?.payment?.href;
-
-  if (!paymentUrl) {
-    throw new Error(`No payment link returned. Response: ${JSON.stringify(data)}`);
-  }
-
-  return paymentUrl;
+  throw new Error(lastError || "Invoice creation failed: Unsupported Media Type (415)");
 }
 
 export async function POST(req) {
   try {
-    const { description, amount } = await req.json();
+    const payload = await req.json().catch(() => ({}));
+    const description = typeof payload.description === "string" ? payload.description.trim() : "";
+    const amount = Number(payload.amount);
 
-    if (!description || typeof description !== "string") {
-      return Response.json(
-        { error: "Description is required" },
-        { status: 400 }
-      );
+    if (!description) {
+      return Response.json({ error: "Description is required" }, { status: 400 });
     }
-
-    const numericAmount = Number(amount);
-
-    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
-      return Response.json(
-        { error: "Amount must be a number greater than 0" },
-        { status: 400 }
-      );
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return Response.json({ error: "Amount must be a number > 0" }, { status: 400 });
     }
 
     const apiBase = mustGetEnv("NG_API_BASE");
@@ -116,21 +148,10 @@ export async function POST(req) {
     const currency = process.env.NG_CURRENCY || "AED";
 
     const token = await getAccessToken(apiBase, apiKey);
-
-    const paymentUrl = await createInvoice(
-      apiBase,
-      token,
-      outletRef,
-      currency,
-      description.trim(),
-      numericAmount
-    );
+    const paymentUrl = await createInvoiceSmart(apiBase, token, outletRef, currency, description, amount);
 
     return Response.json({ paymentUrl });
   } catch (err) {
-    return Response.json(
-      { error: err.message || "Server error" },
-      { status: 500 }
-    );
+    return Response.json({ error: err?.message || "Server error" }, { status: 500 });
   }
 }
