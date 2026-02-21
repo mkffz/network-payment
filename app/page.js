@@ -183,6 +183,7 @@ style={{
   display: "block",
   margin: "0 auto 24px",
   padding: "18px 18px",
+                fontSize: 18,
               background: "#0f172a",
               color: "white",
               border: "none",
