@@ -10,6 +10,22 @@ function formatAmount(n) {
   return Number((Math.round(n * 100) / 100).toFixed(2));
 }
 
+function safeTrim(v) {
+  return typeof v === "string" ? v.trim() : "";
+}
+
+function formatExpiryDDMMYYYY(daysFromNow = 7) {
+  // Returns dd/MM/yyyy (required by your API error message)
+  const d = new Date();
+  d.setDate(d.getDate() + daysFromNow);
+
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = String(d.getFullYear());
+
+  return `${dd}/${mm}/${yyyy}`;
+}
+
 async function safeJson(res) {
   try {
     return await res.json();
@@ -41,35 +57,8 @@ async function getAccessToken(apiBase, apiKey) {
   return data.access_token;
 }
 
-async function createInvoiceWithContentType({
-  apiBase,
-  token,
-  outletRef,
-  currency,
-  description,
-  amount,
-  contentType,
-}) {
+async function createInvoice(apiBase, token, outletRef, payload, contentType) {
   const url = `${apiBase}/invoices/outlets/${outletRef}/invoice`;
-
-  const body = {
-    transactionType: "PURCHASE",
-    items: [
-      {
-        description,
-        totalPrice: {
-          currencyCode: currency,
-          value: formatAmount(amount),
-        },
-        quantity: 1,
-      },
-    ],
-    total: {
-      currencyCode: currency,
-      value: formatAmount(amount),
-    },
-    message: description,
-  };
 
   const res = await fetch(url, {
     method: "POST",
@@ -78,36 +67,26 @@ async function createInvoiceWithContentType({
       "Content-Type": contentType,
       Accept: contentType,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
 
   const data = await safeJson(res);
-
   return { res, data };
 }
 
-async function createInvoiceSmart(apiBase, token, outletRef, currency, description, amount) {
-  // We try the common N-Genius/Network variants.
-  // The goal: automatically avoid the 415 “Unsupported Media Type” loop.
+async function createInvoiceSmart(apiBase, token, outletRef, payload) {
+  // Your API accepted vnd.ni-invoice.v1+json (since 422 came back with that)
+  // We'll still keep 1-2 fallbacks just in case.
   const contentTypesToTry = [
     "application/vnd.ni-invoice.v1+json",
     "application/vnd.ni-payment.v2+json",
-    "application/vnd.ni-payment.v3+json",
     "application/json",
   ];
 
-  let lastError = null;
+  let lastErr = null;
 
   for (const ct of contentTypesToTry) {
-    const { res, data } = await createInvoiceWithContentType({
-      apiBase,
-      token,
-      outletRef,
-      currency,
-      description,
-      amount,
-      contentType: ct,
-    });
+    const { res, data } = await createInvoice(apiBase, token, outletRef, payload, ct);
 
     if (res.ok) {
       const paymentUrl = data?._links?.payment?.href || data?.payment?.href;
@@ -117,23 +96,23 @@ async function createInvoiceSmart(apiBase, token, outletRef, currency, descripti
       return paymentUrl;
     }
 
-    // If it's NOT 415, don't keep guessing—surface the real error immediately.
+    // If not 415, we should stop guessing and return the real error.
     if (res.status !== 415) {
       throw new Error(`Invoice creation failed (${ct}): ${res.status} ${JSON.stringify(data)}`);
     }
 
-    // Save 415 error and try next content type
-    lastError = `415 Unsupported Media Type with Content-Type=${ct}: ${JSON.stringify(data)}`;
+    lastErr = `415 Unsupported Media Type (${ct}): ${JSON.stringify(data)}`;
   }
 
-  throw new Error(lastError || "Invoice creation failed: Unsupported Media Type (415)");
+  throw new Error(lastErr || "Invoice creation failed");
 }
 
 export async function POST(req) {
   try {
-    const payload = await req.json().catch(() => ({}));
-    const description = typeof payload.description === "string" ? payload.description.trim() : "";
-    const amount = Number(payload.amount);
+    const body = await req.json().catch(() => ({}));
+
+    const description = safeTrim(body.description);
+    const amount = Number(body.amount);
 
     if (!description) {
       return Response.json({ error: "Description is required" }, { status: 400 });
@@ -145,10 +124,41 @@ export async function POST(req) {
     const apiBase = mustGetEnv("NG_API_BASE");
     const apiKey = mustGetEnv("NG_API_KEY");
     const outletRef = mustGetEnv("NG_OUTLET_REF");
+
     const currency = process.env.NG_CURRENCY || "AED";
 
+    // Defaults (so you don't have to type customer name every time)
+    const firstName = safeTrim(body.firstName) || "AE";
+    const lastName = safeTrim(body.lastName) || "Customer";
+
+    // Must be future date in dd/MM/yyyy
+    const invoiceExpiryDate =
+      safeTrim(body.invoiceExpiryDate) || formatExpiryDDMMYYYY(7);
+
+    const payload = {
+      firstName,
+      lastName,
+      transactionType: "PURCHASE",
+      invoiceExpiryDate, // dd/MM/yyyy
+      items: [
+        {
+          description,
+          totalPrice: {
+            currencyCode: currency,
+            value: formatAmount(amount),
+          },
+          quantity: 1,
+        },
+      ],
+      total: {
+        currencyCode: currency,
+        value: formatAmount(amount),
+      },
+      message: description,
+    };
+
     const token = await getAccessToken(apiBase, apiKey);
-    const paymentUrl = await createInvoiceSmart(apiBase, token, outletRef, currency, description, amount);
+    const paymentUrl = await createInvoiceSmart(apiBase, token, outletRef, payload);
 
     return Response.json({ paymentUrl });
   } catch (err) {
