@@ -15,15 +15,12 @@ function formatAmount(n) {
 }
 
 function formatExpiryISO(daysFromNow = 7) {
-  // Returns YYYY-MM-DD (commonly required by APIs)
   const d = new Date();
   d.setDate(d.getDate() + daysFromNow);
-
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
-
-  return `${yyyy}-${mm}-${dd}`;
+  return `${yyyy}-${mm}-${dd}`; // YYYY-MM-DD
 }
 
 async function safeJson(res) {
@@ -35,9 +32,7 @@ async function safeJson(res) {
 }
 
 async function getAccessToken(apiBase, apiKey) {
-  const url = `${apiBase}/identity/auth/access-token`;
-
-  const res = await fetch(url, {
+  const res = await fetch(`${apiBase}/identity/auth/access-token`, {
     method: "POST",
     headers: {
       "Content-Type": "application/vnd.ni-identity.v1+json",
@@ -46,14 +41,12 @@ async function getAccessToken(apiBase, apiKey) {
   });
 
   const data = await safeJson(res);
-
   if (!res.ok) {
     throw new Error(`Access token failed: ${res.status} ${JSON.stringify(data)}`);
   }
   if (!data?.access_token) {
     throw new Error(`No access_token returned: ${JSON.stringify(data)}`);
   }
-
   return data.access_token;
 }
 
@@ -75,9 +68,9 @@ async function createInvoice(apiBase, token, outletRef, payload, contentType) {
 }
 
 async function createInvoiceSmart(apiBase, token, outletRef, payload) {
+  // Your responses show application/vnd.ni-invoice.v1+json is correct for your tenant.
   const contentTypesToTry = [
     "application/vnd.ni-invoice.v1+json",
-    "application/vnd.ni-payment.v2+json",
     "application/json",
   ];
 
@@ -111,6 +104,11 @@ export async function POST(req) {
     const description = safeTrim(body.description);
     const amount = Number(body.amount);
 
+    // NEW: require email OR mobileNumber
+    const email = safeTrim(body.email);
+    const mobileNumber = safeTrim(body.mobileNumber);
+    const countryCode = safeTrim(body.countryCode); // e.g. "+971"
+
     if (!description) {
       return Response.json({ error: "Description is required" }, { status: 400 });
     }
@@ -118,24 +116,39 @@ export async function POST(req) {
       return Response.json({ error: "Amount must be a number > 0" }, { status: 400 });
     }
 
+    if (!email && !mobileNumber) {
+      return Response.json(
+        { error: "Email or mobile number is required" },
+        { status: 400 }
+      );
+    }
+
+    // If user provides mobileNumber, we also need a countryCode (per their portal style)
+    if (mobileNumber && !countryCode) {
+      return Response.json(
+        { error: "countryCode is required when mobileNumber is provided (example: +971)" },
+        { status: 400 }
+      );
+    }
+
     const apiBase = mustGetEnv("NG_API_BASE");
     const apiKey = mustGetEnv("NG_API_KEY");
     const outletRef = mustGetEnv("NG_OUTLET_REF");
-
     const currency = process.env.NG_CURRENCY || "AED";
 
-    // Required by your API
+    // Required by your tenant
     const firstName = safeTrim(body.firstName) || "AE";
     const lastName = safeTrim(body.lastName) || "Customer";
 
-    // IMPORTANT: switch to ISO date format (YYYY-MM-DD)
+    // Expiry date
     const invoiceExpiryDate = safeTrim(body.invoiceExpiryDate) || formatExpiryISO(7);
 
+    // Build payload
     const payload = {
       firstName,
       lastName,
       transactionType: "PURCHASE",
-      invoiceExpiryDate, // YYYY-MM-DD
+      invoiceExpiryDate,
       items: [
         {
           description,
@@ -152,6 +165,11 @@ export async function POST(req) {
       },
       message: description,
     };
+
+    // Add email/mobile fields only if provided
+    if (email) payload.email = email;
+    if (mobileNumber) payload.mobileNumber = mobileNumber;
+    if (countryCode) payload.countryCode = countryCode;
 
     const token = await getAccessToken(apiBase, apiKey);
     const paymentUrl = await createInvoiceSmart(apiBase, token, outletRef, payload);
