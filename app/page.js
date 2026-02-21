@@ -5,6 +5,8 @@ import { useState } from "react";
 export default function Home() {
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
+  const [email, setEmail] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [link, setLink] = useState("");
   const [error, setError] = useState("");
@@ -16,6 +18,7 @@ export default function Home() {
     const a = Number(amount);
     if (!description.trim()) return setError("Please enter a description.");
     if (!Number.isFinite(a) || a <= 0) return setError("Please enter a valid amount > 0.");
+    if (!email.trim()) return setError("Please enter customer email (required by Network).");
 
     setLoading(true);
     try {
@@ -24,8 +27,12 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           description: description.trim(),
-          amount: a
-        })
+          amount: a,
+          email: email.trim(),
+          // Optional (backend defaults are fine):
+          // firstName: "AE",
+          // lastName: "Customer"
+        }),
       });
 
       const data = await res.json();
@@ -40,14 +47,14 @@ export default function Home() {
   }
 
   return (
-    <main style={{ maxWidth: 520, margin: "40px auto", fontFamily: "Arial, sans-serif" }}>
+    <main style={{ maxWidth: 650, margin: "40px auto", fontFamily: "Arial, sans-serif" }}>
       <h2>N-Genius Payment Link Generator</h2>
 
       <label>Description</label>
       <input
         value={description}
         onChange={(e) => setDescription(e.target.value)}
-        placeholder="e.g., AE Tickets - Arsenal vs City"
+        placeholder="e.g., AE Tickets - Real Madrid vs Barca"
         style={{ width: "100%", padding: 10, margin: "8px 0 16px" }}
       />
 
@@ -57,6 +64,15 @@ export default function Home() {
         onChange={(e) => setAmount(e.target.value)}
         placeholder="e.g., 250"
         type="number"
+        style={{ width: "100%", padding: 10, margin: "8px 0 16px" }}
+      />
+
+      <label>Customer Email (Required)</label>
+      <input
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="customer@email.com"
+        type="email"
         style={{ width: "100%", padding: 10, margin: "8px 0 16px" }}
       />
 
